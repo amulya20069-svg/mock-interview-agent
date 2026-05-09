@@ -18,7 +18,7 @@ function RoleSelection({ resumeAnalysis, setSelectedRole, setStep }) {
   
     return (
       <section className="card">
-        <h2>Step 2: Recommended Roles</h2>
+        <h2>Recommended Roles</h2>
   
         <div className="summary">
           <h3>Candidate Summary</h3>

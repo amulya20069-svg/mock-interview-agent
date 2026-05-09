@@ -49,7 +49,7 @@ function Interview({
     await generateQuestion();
   }
 
-  async function generateQuestion() {
+  async function generateQuestion(previousAnswersOverride = sessionData) {  
     try {
       setLoading(true);
   
@@ -61,8 +61,8 @@ function Interview({
         body: JSON.stringify({
           resumeAnalysis,
           selectedRole,
-          previousAnswers: sessionData
-        })
+          previousAnswers: previousAnswersOverride
+          })
       });
   
       const data = await res.json();
@@ -386,13 +386,13 @@ function Interview({
     } else {
       setTranscript("");
       setLoading(false);
-      await generateQuestion();
-    }
+      await generateQuestion(updatedSession);
+      }
   }
 
   return (
     <section className="card">
-      <h2>Step 3: {selectedRole} Mock Interview</h2>
+      <h2>{selectedRole} Mock Interview</h2>
 
       {!interviewStarted ? (
         <div className="start-panel">

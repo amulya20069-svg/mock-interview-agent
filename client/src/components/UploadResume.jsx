@@ -41,7 +41,7 @@ function UploadResume({ setResumeAnalysis, setStep }) {
 
   return (
     <section className="card">
-      <h2>Step 1: Upload Resume</h2>
+      <h2>Upload Resume</h2>
       <p>
         The AI will read your resume and infer suitable roles using projects,
         skills, and experience.
