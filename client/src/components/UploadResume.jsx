@@ -16,7 +16,7 @@ function UploadResume({ setResumeAnalysis, setStep }) {
       const formData = new FormData();
       formData.append("resume", file);
 
-      const res = await fetch("http://localhost:5001/api/interview/analyze-resume", {
+      const res = await fetch("https://ferment-frisbee-karate.ngrok-free.dev/api/interview/analyze-resume", {
         method: "POST",
         body: formData
       });

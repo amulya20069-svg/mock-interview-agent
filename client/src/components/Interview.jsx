@@ -50,30 +50,43 @@ function Interview({
   }
 
   async function generateQuestion() {
-    setLoading(true);
-
-    const res = await fetch("http://localhost:5001/api/interview/generate-question", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        resumeAnalysis,
-        selectedRole,
-        previousAnswers: sessionData
-      })
-    });
-
-    const data = await res.json();
-    setQuestionObj(data);
-    setTranscript("");
-    setLoading(false);
-
-    readQuestionAloud(data.question);
-
-    setTimeout(() => {
-      startSpeechRecognition();
-    }, 1500);
+    try {
+      setLoading(true);
+  
+      const res = await fetch("https://ferment-frisbee-karate.ngrok-free.dev/api/interview/generate-question", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          resumeAnalysis,
+          selectedRole,
+          previousAnswers: sessionData
+        })
+      });
+  
+      const data = await res.json();
+  
+      if (!res.ok) {
+        console.log("Question generation backend error:", data);
+        alert(data.message || "Question generation failed");
+        return;
+      }
+  
+      setQuestionObj(data);
+      setTranscript("");
+  
+      readQuestionAloud(data.question);
+  
+      setTimeout(() => {
+        startSpeechRecognition();
+      }, 1500);
+    } catch (error) {
+      console.error("Question generation frontend error:", error);
+      alert("Could not generate question. Backend may not be reachable.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   function readQuestionAloud(question) {
@@ -325,7 +338,7 @@ function Interview({
     setSessionData(updatedSession);
 
     if (updatedSession.length >= 3) {
-      const feedbackRes = await fetch("http://localhost:5001/api/interview/final-feedback", {
+      const feedbackRes = await fetch("https://ferment-frisbee-karate.ngrok-free.dev/api/interview/final-feedback", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
