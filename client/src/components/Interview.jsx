@@ -76,11 +76,13 @@ function Interview({
       setQuestionObj(data);
       setTranscript("");
   
-      readQuestionAloud(data.question);
-  
+      setTimeout(() => {
+        readQuestionAloud(data.question);
+      }, 500);
+      
       setTimeout(() => {
         startSpeechRecognition();
-      }, 1500);
+      }, 5000);
     } catch (error) {
       console.error("Question generation frontend error:", error);
       alert("Could not generate question. Backend may not be reachable.");
@@ -90,14 +92,44 @@ function Interview({
   }
 
   function readQuestionAloud(question) {
+    if (!question) return;
+  
     window.speechSynthesis.cancel();
-
-    const speech = new SpeechSynthesisUtterance(question);
-    speech.rate = 0.9;
-    speech.pitch = 1;
-    speech.volume = 1;
-
-    window.speechSynthesis.speak(speech);
+  
+    const speakNow = () => {
+      const speech = new SpeechSynthesisUtterance(question);
+      speech.lang = "en-US";
+      speech.rate = 0.85;
+      speech.pitch = 1;
+      speech.volume = 1;
+  
+      const voices = window.speechSynthesis.getVoices();
+      const englishVoice = voices.find((voice) =>
+        voice.lang.toLowerCase().startsWith("en")
+      );
+  
+      if (englishVoice) {
+        speech.voice = englishVoice;
+      }
+  
+      speech.onstart = () => {
+        console.log("Reading question aloud...");
+      };
+  
+      speech.onerror = (error) => {
+        console.error("Speech synthesis error:", error);
+      };
+  
+      window.speechSynthesis.speak(speech);
+    };
+  
+    const voices = window.speechSynthesis.getVoices();
+  
+    if (voices.length === 0) {
+      window.speechSynthesis.onvoiceschanged = speakNow;
+    } else {
+      speakNow();
+    }
   }
 
   async function startCamera() {
