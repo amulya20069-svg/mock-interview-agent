@@ -1,6 +1,7 @@
 import { useState } from "react";
 import UploadResume from "./components/UploadResume";
 import RoleSelection from "./components/RoleSelection";
+import ModeSelection from "./components/ModeSelection";
 import Interview from "./components/Interview";
 import Feedback from "./components/Feedback";
 
@@ -8,6 +9,7 @@ function App() {
   const [step, setStep] = useState("upload");
   const [resumeAnalysis, setResumeAnalysis] = useState(null);
   const [selectedRole, setSelectedRole] = useState("");
+  const [interviewMode, setInterviewMode] = useState("");
   const [sessionData, setSessionData] = useState([]);
   const [finalFeedback, setFinalFeedback] = useState(null);
 
@@ -33,10 +35,19 @@ function App() {
         />
       )}
 
+      {step === "mode" && (
+        <ModeSelection
+          selectedRole={selectedRole}
+          setInterviewMode={setInterviewMode}
+          setStep={setStep}
+        />
+      )}
+
       {step === "interview" && (
         <Interview
           resumeAnalysis={resumeAnalysis}
           selectedRole={selectedRole}
+          interviewMode={interviewMode}
           sessionData={sessionData}
           setSessionData={setSessionData}
           setFinalFeedback={setFinalFeedback}

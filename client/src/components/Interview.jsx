@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+const API_URL = "https://ferment-frisbee-karate.ngrok-free.dev";
 
 function Interview({
   resumeAnalysis,
   selectedRole,
+  interviewMode,
   sessionData,
   setSessionData,
   setFinalFeedback,
@@ -13,6 +15,12 @@ function Interview({
   const [transcript, setTranscript] = useState("");
   const [listening, setListening] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [typingStartTime, setTypingStartTime] = useState(null);
+  const [typingMetrics, setTypingMetrics] = useState({
+  timeTakenSeconds: 0,
+  typingSpeedWPM: 0,
+  backspaceCount: 0
+});
 
   const [audioMetrics, setAudioMetrics] = useState({
     fillerCount: 0,
@@ -32,6 +40,18 @@ function Interview({
   const recognitionRef = useRef(null);
   const faceDetectorRef = useRef(null);
   const monitoringStartedRef = useRef(false);
+  const phoneDetectorRef = useRef(null);
+
+const monitoringStatsRef = useRef({
+  frames: 0,
+  eyeContactTotal: 0,
+  postureTotal: 0,
+  engagementTotal: 0,
+  faceLostCount: 0,
+  lookingAwayCount: 0,
+  lookingDownCount: 0,
+  phoneDetectedCount: 0
+});
 
   useEffect(() => {
     return () => {
@@ -43,15 +63,42 @@ function Interview({
 
   async function startInterview() {
     setInterviewStarted(true);
-    await startCamera();
-    await setupFaceDetector();
-    startMonitoring();
-    await generateQuestion();
+    setLoading(true);
+  
+    try {
+      await startCamera();
+  
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+  
+      await setupFaceDetector();
+      try {
+        await setupPhoneDetector();
+      } catch (error) {
+        console.log("Phone detector could not load, continuing without phone detection:", error);
+      }  
+      const faceDetected = await checkFaceOnce();
+  
+      if (!faceDetected) {
+        alert("Face not detected. Please show your full face clearly before starting.");
+        setLoading(false);
+        return;
+      }
+  
+      resetMonitoringStats();
+      startMonitoring();
+  
+      await generateQuestion();
+    } catch (error) {
+      console.error("Interview start error:", error);
+      alert("Video checking failed. Please refresh and allow camera access.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function generateQuestion(previousAnswersOverride = sessionData) {  
     try {
-      setLoading(true);
+      setLoading(false);
   
       const res = await fetch("https://ferment-frisbee-karate.ngrok-free.dev/api/interview/generate-question", {
         method: "POST",
@@ -76,13 +123,19 @@ function Interview({
       setQuestionObj(data);
       setTranscript("");
   
-      setTimeout(() => {
-        readQuestionAloud(data.question);
-      }, 500);
+      if (interviewMode === "speech") {
+        setTimeout(() => {
+          readQuestionAloud(data.question);
+        }, 500);
       
-      setTimeout(() => {
-        startSpeechRecognition();
-      }, 5000);
+        setTimeout(() => {
+          startSpeechRecognition();
+        }, 5000);
+      }
+      
+      if (interviewMode === "typing") {
+        setTypingStartTime(Date.now());
+      }
     } catch (error) {
       console.error("Question generation frontend error:", error);
       alert("Could not generate question. Backend may not be reachable.");
@@ -159,8 +212,7 @@ function Interview({
     const vision = await import("@mediapipe/tasks-vision");
 
     const filesetResolver = await vision.FilesetResolver.forVisionTasks(
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
-    );
+"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"  );
 
     const faceDetector = await vision.FaceDetector.createFromOptions(filesetResolver, {
       baseOptions: {
@@ -173,86 +225,216 @@ function Interview({
     faceDetectorRef.current = faceDetector;
   }
 
+  async function checkFaceOnce() {
+    const video = videoRef.current;
+  
+    if (!video || !faceDetectorRef.current) {
+      return false;
+    }
+  
+    for (let i = 0; i < 20; i++) {
+      if (video.videoWidth && video.videoHeight) {
+        const result = faceDetectorRef.current.detectForVideo(
+          video,
+          performance.now()
+        );
+  
+        if (result.detections && result.detections.length > 0) {
+          setVideoMetrics({
+            faceVisible: true,
+            eyeContactScore: 90,
+            postureScore: 90,
+            engagementScore: 90,
+            phoneDetected: false,
+            cheatingFlags: []
+          });
+  
+          return true;
+        }
+      }
+  
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+  
+    setVideoMetrics({
+      faceVisible: false,
+      eyeContactScore: 0,
+      postureScore: 0,
+      engagementScore: 0,
+      phoneDetected: false,
+      cheatingFlags: ["Face not detected before interview start"]
+    });
+  
+    return false;
+  }
+
+  async function setupPhoneDetector() {
+    const cocoSsd = await import("@tensorflow-models/coco-ssd");
+    await import("@tensorflow/tfjs");
+  
+    const model = await cocoSsd.load();
+    phoneDetectorRef.current = model;
+  }
+
+  function resetMonitoringStats() {
+    monitoringStatsRef.current = {
+      frames: 0,
+      eyeContactTotal: 0,
+      postureTotal: 0,
+      engagementTotal: 0,
+      faceLostCount: 0,
+      lookingAwayCount: 0,
+      lookingDownCount: 0,
+      phoneDetectedCount: 0
+    };
+  }
+  
+  function getAverageVideoMetrics() {
+    const stats = monitoringStatsRef.current;
+    const frames = Math.max(1, stats.frames);
+  
+    const cheatingFlags = [];
+  
+    if (stats.faceLostCount > 5) cheatingFlags.push("Face was not visible multiple times");
+    if (stats.lookingAwayCount > 8) cheatingFlags.push("Candidate looked away frequently");
+    if (interviewMode === "speech" && stats.lookingDownCount > 8) {
+      cheatingFlags.push("Candidate looked down while answering");
+    }
+    
+    if (interviewMode === "typing" && stats.lookingDownCount > 25) {
+      cheatingFlags.push("Candidate looked down too much even for typing mode");
+    }    if (stats.phoneDetectedCount > 2) cheatingFlags.push("Mobile phone detected during interview");
+  
+    return {
+      faceVisible: stats.faceLostCount < frames / 2,
+      eyeContactScore: Math.round(stats.eyeContactTotal / frames),
+      postureScore: Math.round(stats.postureTotal / frames),
+      engagementScore: Math.round(stats.engagementTotal / frames),
+      phoneDetected: stats.phoneDetectedCount > 2,
+      cheatingFlags
+    };
+  }
+
   function startMonitoring() {
     if (monitoringStartedRef.current) return;
     monitoringStartedRef.current = true;
-
+  
     const video = videoRef.current;
-
+  
     async function monitorFrame() {
       if (!video || !faceDetectorRef.current) {
         requestAnimationFrame(monitorFrame);
         return;
       }
-
+  
       if (!video.videoWidth || !video.videoHeight) {
         requestAnimationFrame(monitorFrame);
         return;
       }
-
+  
       const result = faceDetectorRef.current.detectForVideo(
         video,
         performance.now()
       );
-
+  
       let cheatingFlags = [];
-
+      let eyeContactScore = 0;
+      let postureScore = 0;
+      let engagementScore = 0;
+      let faceVisible = false;
+      let phoneDetected = false;
+  
+      const stats = monitoringStatsRef.current;
+      stats.frames += 1;
+  
       if (!result.detections || result.detections.length === 0) {
         cheatingFlags.push("Face not visible");
-        setVideoMetrics({
-          faceVisible: false,
-          eyeContactScore: 0,
-          postureScore: 0,
-          engagementScore: 0,
-          cheatingFlags
-        });
+        stats.faceLostCount += 1;
       } else {
+        faceVisible = true;
+  
         const face = result.detections[0];
         const box = face.boundingBox;
-
+  
         const faceCenterX = box.originX + box.width / 2;
         const faceCenterY = box.originY + box.height / 2;
-
+  
         const videoCenterX = video.videoWidth / 2;
         const videoCenterY = video.videoHeight / 2;
-
+  
         const xDistance = Math.abs(faceCenterX - videoCenterX);
         const yDistance = Math.abs(faceCenterY - videoCenterY);
-
-        let eyeContactScore = 100;
-        let postureScore = 100;
-
-        if (xDistance > 80) eyeContactScore -= 25;
-        if (xDistance > 150) eyeContactScore -= 35;
-        if (yDistance > 90) postureScore -= 30;
-
+  
+        eyeContactScore = 100;
+        postureScore = 100;
+  
+        if (xDistance > 45) eyeContactScore -= 25;
+        if (xDistance > 80) eyeContactScore -= 30;
+        if (xDistance > 120) eyeContactScore -= 30;
+  
+        if (yDistance > 45) postureScore -= 25;
+        if (yDistance > 80) postureScore -= 35;
+  
+        if (faceCenterY > videoCenterY + 70) {
+          if (interviewMode === "speech") {
+            cheatingFlags.push("Looking down while answering");
+            stats.lookingDownCount += 1;
+            eyeContactScore -= 25;
+          }
+        
+          if (interviewMode === "typing") {
+            stats.lookingDownCount += 0.25;
+            eyeContactScore -= 5;
+          }
+        }
+  
+        if (interviewMode === "speech" && eyeContactScore < 65) {
+          cheatingFlags.push("Looking away from camera");
+          stats.lookingAwayCount += 1;
+        }
+        
+        if (interviewMode === "typing" && eyeContactScore < 35) {
+          cheatingFlags.push("Looking away too much during typing");
+          stats.lookingAwayCount += 0.25;
+        }
+  
         eyeContactScore = Math.max(0, eyeContactScore);
         postureScore = Math.max(0, postureScore);
-
-        if (eyeContactScore < 60) {
-          cheatingFlags.push("Looking away from screen/camera");
-        }
-
-        if (postureScore < 60) {
-          cheatingFlags.push("Posture not centered");
-        }
-
-        const engagementScore = Math.round(
-          (eyeContactScore + postureScore) / 2
-        );
-
-        setVideoMetrics({
-          faceVisible: true,
-          eyeContactScore,
-          postureScore,
-          engagementScore,
-          cheatingFlags
-        });
+        engagementScore = Math.round((eyeContactScore + postureScore) / 2);
       }
-
+  
+      if (phoneDetectorRef.current && stats.frames % 15 === 0) {
+        try {
+          const predictions = await phoneDetectorRef.current.detect(video);
+          phoneDetected = predictions.some(
+            (item) => item.class === "cell phone" && item.score > 0.45
+          );
+  
+          if (phoneDetected) {
+            cheatingFlags.push("Mobile phone detected");
+            stats.phoneDetectedCount += 1;
+          }
+        } catch (error) {
+          console.log("Phone detection skipped:", error.message);
+        }
+      }
+  
+      stats.eyeContactTotal += eyeContactScore;
+      stats.postureTotal += postureScore;
+      stats.engagementTotal += engagementScore;
+  
+      setVideoMetrics({
+        faceVisible,
+        eyeContactScore,
+        postureScore,
+        engagementScore,
+        phoneDetected,
+        cheatingFlags
+      });
+  
       requestAnimationFrame(monitorFrame);
     }
-
+  
     monitorFrame();
   }
 
@@ -331,68 +513,124 @@ function Interview({
     });
   }
 
+  function calculateTypingMetrics(text) {
+    if (!typingStartTime) return;
+  
+    const now = Date.now();
+    const timeTakenSeconds = Math.max(1, Math.round((now - typingStartTime) / 1000));
+  
+    const words = text.trim().split(/\s+/).filter(Boolean);
+    const typingSpeedWPM = Math.round((words.length / timeTakenSeconds) * 60);
+  
+    setTypingMetrics((prev) => ({
+      ...prev,
+      timeTakenSeconds,
+      typingSpeedWPM
+    }));
+  }
+
   async function submitAndNext() {
     if (!transcript.trim()) {
       alert("Please answer before moving to the next question.");
       return;
     }
-
-    stopSpeechRecognition();
-    setLoading(true);
-
-    const res = await fetch("http://localhost:5001/api/interview/evaluate-answer", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        question: questionObj.question,
-        answer: transcript,
-        selectedRole,
-        expectedDepth: questionObj.expectedDepth,
-        note: "Transcript may contain speech recognition errors. Evaluate meaning, not exact wording."
-      })
-    });
-
-    const evaluation = await res.json();
-
-    const answerData = {
-      question: questionObj.question,
-      answer: transcript,
-      difficulty: questionObj.difficulty,
-      whyAsked: questionObj.whyAsked,
-      evaluation,
-      audioMetrics,
-      videoMetrics
-    };
-
-    const updatedSession = [...sessionData, answerData];
-    setSessionData(updatedSession);
-
-    if (updatedSession.length >= 3) {
-      const feedbackRes = await fetch("https://ferment-frisbee-karate.ngrok-free.dev/api/interview/final-feedback", {
+  
+    try {
+      stopSpeechRecognition();
+      setLoading(true);
+  
+      const res = await fetch(`${API_URL}/api/interview/evaluate-answer`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          sessionData: updatedSession
+          question: questionObj.question,
+          answer: transcript,
+          selectedRole,
+          expectedDepth: questionObj.expectedDepth,
+          note: "Transcript may contain speech recognition errors. Evaluate meaning, not exact wording."
         })
       });
-
-      const feedback = await feedbackRes.json();
-      setFinalFeedback(feedback);
-      setStep("feedback");
-    } else {
-      setTranscript("");
-      setLoading(false);
-      await generateQuestion(updatedSession);
+  
+      const evaluation = await res.json();
+  
+      if (!res.ok) {
+        alert(evaluation.message || "Answer evaluation failed");
+        return;
       }
+      const averageVideoMetrics = getAverageVideoMetrics();
+      const answerData = {
+        question: questionObj.question,
+        answer: transcript,
+        difficulty: questionObj.difficulty,
+        whyAsked: questionObj.whyAsked,
+        evaluation,
+  audioMetrics,
+  typingMetrics,
+  videoMetrics: averageVideoMetrics,
+    interviewMode
+      };
+  
+      const updatedSession = [...sessionData, answerData];
+
+      setSessionData(updatedSession);
+      resetMonitoringStats();
+  
+      if (updatedSession.length >= 3) {
+        const feedbackRes = await fetch(`${API_URL}/api/interview/final-feedback`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            sessionData: updatedSession
+          })
+        });
+  
+        const feedback = await feedbackRes.json();
+  
+        if (!feedbackRes.ok) {
+          alert(feedback.message || "Final feedback failed");
+          return;
+        }
+  
+        setFinalFeedback(feedback);
+        setStep("feedback");
+      } else {
+        setTranscript("");
+        await generateQuestion(updatedSession);
+      }
+    } catch (error) {
+      console.error("Submit next error:", error);
+      alert("Something went wrong while moving to next question.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
     <section className="card">
       <h2>{selectedRole} Mock Interview</h2>
+      {interviewStarted && (
+  <button
+    className="secondary-btn"
+    onClick={() => {
+      stopCamera();
+      stopSpeechRecognition();
+      window.speechSynthesis.cancel();
+      setStep("mode");
+    }}
+  >
+    Exit Interview
+  </button>
+)}
+
+      {!interviewStarted && (
+  <button className="secondary-btn" onClick={() => setStep("mode")}>
+    ← Back to Mode Selection
+  </button>
+)}
 
       {!interviewStarted ? (
         <div className="start-panel">
@@ -433,25 +671,64 @@ function Interview({
             </div>
           )}
 
-          <textarea
-            value={transcript}
-            onChange={(e) => {
-              setTranscript(e.target.value);
-              calculateAudioMetrics(e.target.value);
-            }}
-            placeholder="Your answer will appear here automatically as you speak."
-          />
+{interviewMode === "speech" && (
+  <textarea
+    value={transcript}
+    readOnly
+    placeholder="Your spoken answer will appear here automatically. Typing is disabled in speech mode."
+  />
+)}
 
-          <div className="metrics">
-            <p>Speech: {listening ? "Listening" : "Paused"}</p>
-            <p>Words: {audioMetrics.wordCount}</p>
-            <p>Filler words: {audioMetrics.fillerCount}</p>
-            <p>Confidence estimate: {audioMetrics.confidenceScore}/100</p>
-          </div>
+{interviewMode === "typing" && (
+  <textarea
+    value={transcript}
+    onChange={(e) => {
+      const newText = e.target.value;
+      setTranscript(newText);
+      calculateAudioMetrics(newText);
+      calculateTypingMetrics(newText);
+    }}
+    onKeyDown={(e) => {
+      if (e.key === "Backspace") {
+        setTypingMetrics((prev) => ({
+          ...prev,
+          backspaceCount: prev.backspaceCount + 1
+        }));
+      }
+    }}
+    placeholder="Type your answer here. Speech is disabled in typing mode."
+  />
+)}
 
-          <button onClick={submitAndNext} disabled={loading}>
-            {sessionData.length >= 2 ? "Submit & Finish" : "Submit & Next Question"}
-          </button>
+<div className="metrics">
+  <p>Mode: {interviewMode === "speech" ? "Speech" : "Typing"}</p>
+
+  {interviewMode === "speech" && (
+    <>
+      <p>Speech: {listening ? "Listening" : "Paused"}</p>
+      <p>Words: {audioMetrics.wordCount}</p>
+      <p>Filler words: {audioMetrics.fillerCount}</p>
+      <p>Confidence estimate: {audioMetrics.confidenceScore}/100</p>
+    </>
+  )}
+
+  {interviewMode === "typing" && (
+    <>
+      <p>Words: {audioMetrics.wordCount}</p>
+      <p>Time taken: {typingMetrics.timeTakenSeconds}s</p>
+      <p>Typing speed: {typingMetrics.typingSpeedWPM} WPM</p>
+      <p>Backspaces: {typingMetrics.backspaceCount}</p>
+    </>
+  )}
+</div>
+
+          <button onClick={submitAndNext} disabled={!questionObj || !transcript.trim()}>
+  {loading
+    ? "Processing..."
+    : sessionData.length >= 2
+    ? "Submit & Finish"
+    : "Submit & Next Question"}
+</button>
         </>
       )}
     </section>

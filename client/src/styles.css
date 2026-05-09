@@ -186,3 +186,12 @@
     border-radius: 12px;
     font-weight: 700;
   }
+
+  .secondary-btn {
+    background: #e2e8f0;
+    color: #1e293b;
+  }
+  
+  .secondary-btn:hover {
+    background: #cbd5e1;
+  }

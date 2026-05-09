@@ -5,6 +5,9 @@ function RoleSelection({ resumeAnalysis, setSelectedRole, setStep }) {
           <h2>No resume analysis found</h2>
           <p>Please go back and upload your resume again.</p>
           <button onClick={() => setStep("upload")}>Back to Upload</button>
+          <button className="secondary-btn" onClick={() => setStep("upload")}>
+           ← Back to Resume Upload
+          </button>
         </section>
       );
     }
@@ -13,7 +16,7 @@ function RoleSelection({ resumeAnalysis, setSelectedRole, setStep }) {
   
     function chooseRole(role) {
       setSelectedRole(role);
-      setStep("interview");
+      setStep("mode");
     }
   
     return (
