@@ -44,7 +44,7 @@ function App() {
       </div>
 
       <header className="hero">
-        <h1>Intelligent Mock Interview Agent</h1>
+        <h1>Mock Interview Agent</h1>
         <p>
           Resume-based role prediction, adaptive AI interviews, and multimodal
           feedback.

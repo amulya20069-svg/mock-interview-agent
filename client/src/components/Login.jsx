@@ -31,8 +31,8 @@ function Login({ setUser }) {
   return (
     <div className="login-page">
       <div className="login-card">
-        <h1>Intelligent Mock Interview Agent</h1>
-        <p>Login to start your AI-powered mock interview.</p>
+        <h1>Mock Interview Agent</h1>
+        <p>Login to start your mock interview.</p>
 
         <form onSubmit={handleSubmit}>
           {isSignup && (
