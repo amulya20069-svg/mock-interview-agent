@@ -195,3 +195,40 @@
   .secondary-btn:hover {
     background: #cbd5e1;
   }
+
+  .login-page {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: linear-gradient(135deg, #eef2ff, #f8fafc);
+    padding: 20px;
+  }
+  
+  .login-card {
+    width: 100%;
+    max-width: 430px;
+    background: white;
+    padding: 36px;
+    border-radius: 28px;
+    box-shadow: 0 25px 80px rgba(30, 41, 59, 0.15);
+    text-align: center;
+  }
+  
+  .login-card h1 {
+    color: #312e81;
+    margin-bottom: 10px;
+  }
+  
+  .login-card p {
+    color: #64748b;
+    margin-bottom: 25px;
+  }
+  
+  .top-user {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 10px;
+  }
